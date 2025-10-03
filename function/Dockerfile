@@ -24,6 +24,9 @@ COPY --from=build-stage /python /python
 # Copy function code
 COPY func.py /function/
 
+# Copy Delta Share profile
+COPY delta_share_profile.json /function/
+
 # Copy Oracle wallet for ATP connection
 COPY Wallet_NDG3D3LXZ4ESODQC /function/wallet/
 

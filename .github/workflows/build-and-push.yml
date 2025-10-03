@@ -53,8 +53,9 @@ jobs:
         curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh -o install.sh
         bash install.sh --accept-all-defaults
 
-        # Update function to use new image
+        # Update function with new image AND Oracle credentials as config variables
         ~/bin/oci fn function update \
           --function-id ocid1.fnfunc.oc1.iad.amaaaaaa52tswuaanqz25ylbc5cv5j6u3l2l6rdyrtzpoij77j3rgu7bk6sq \
           --image iad.ocir.io/hpctraininglab/atp-repo:latest \
+          --config '{"ORACLE_USER":"${{ secrets.ORACLE_USER }}","ORACLE_PASSWORD":"${{ secrets.ORACLE_PASSWORD }}","ORACLE_DSN":"${{ secrets.ORACLE_DSN }}"}' \
           --force

@@ -4,14 +4,93 @@ This guide shows how to invoke the deployed OCI Function from Oracle Integration
 
 ## Overview
 
-Oracle Integration Cloud (OIC) provides native support for invoking OCI Functions directly from integrations. This allows you to create serverless data migration workflows that can be triggered from various sources (REST APIs, scheduled jobs, file uploads, etc.).
+Oracle Integration Cloud (OIC) provides native support for invoking OCI Functions directly from integrations. This allows you to create serverless data migration workflows that can be triggered from various sources.
+
+### Invocation Options
+
+OIC supports multiple ways to trigger your OCI Function:
+
+**1. Manual/On-Demand Trigger:**
+- ✅ **REST Adapter** - Invoke the function via HTTP request
+- Trigger manually from OIC console
+- Expose as a REST endpoint for external systems
+
+**2. Scheduled Trigger:**
+- ✅ **Schedule-based Integration** - Run automatically on a schedule (hourly, daily, weekly, etc.)
+- Perfect for periodic data sync from Delta Share to ATP
+- No manual intervention needed
+
+**3. Event-Driven Trigger:**
+- ✅ **OCI Events** - Trigger when specific OCI events occur
+- ✅ **File/Object Storage** - Trigger when files are uploaded
+- ✅ **Database Events** - Trigger on database changes
+
+### Recommended Approach for DBRX to ATP Migration
+
+**For Regular Data Sync (Most Common):**
+```
+OIC Schedule → OIC Integration → Invoke OCI Function → Data migrated to ATP
+```
+- Runs automatically (e.g., every hour, daily at midnight)
+- Consistent, predictable data refresh
+- Zero manual intervention
+
+**For On-Demand Migration:**
+```
+User/System → REST API → OIC Integration → Invoke OCI Function → Data migrated
+```
+- Full control over when migration runs
+- Useful for testing or irregular updates
+- Can be triggered from external systems
 
 ## Prerequisites
 
 1. Deployed OCI Function (see [DEPLOYMENT.md](DEPLOYMENT.md))
 2. OIC instance in the same tenancy
 3. Function OCID and invoke endpoint (from CDKTF outputs)
-4. Appropriate IAM policies
+4. Appropriate IAM policies (see [Authentication](#authentication-methods) section below)
+
+## Authentication Methods
+
+OIC can authenticate to your OCI Function using two methods:
+
+### Method 1: Resource Principal (Recommended)
+
+The OIC instance is granted permission to invoke functions without explicit credentials.
+
+**Required IAM Policy:**
+```
+Allow any-user to use fn-function in compartment <compartment-name>
+  where ALL {
+    request.principal.type='integration',
+    request.principal.id='<oic-instance-ocid>'
+  }
+```
+
+**Benefits:**
+- ✅ No credentials to manage
+- ✅ More secure (no API keys)
+- ✅ Automatic credential rotation
+- ✅ Easier to set up
+
+### Method 2: OCI Signature Authentication
+
+Configure OIC connection with OCI API key credentials.
+
+**Required Setup:**
+1. Generate API signing key pair
+2. Add public key to OCI user
+3. Configure OIC connection with:
+   - Tenancy OCID
+   - User OCID
+   - Private Key
+   - Fingerprint
+   - Region
+
+**When to Use:**
+- Cross-tenancy function calls
+- Need specific user attribution
+- Advanced auditing requirements
 
 ## Step-by-Step Integration
 
@@ -28,9 +107,9 @@ Oracle Integration Cloud (OIC) provides native support for invoking OCI Function
    - Description: `Migrate data from Databricks to Oracle ATP using OCI Function`
    - Click "Create"
 
-### Step 2: Add REST Trigger (Optional)
+### Step 2: Add REST Trigger (For REST API Invocation)
 
-If you want to trigger the integration via REST API:
+**Use this step if you want to trigger the function via REST API.**
 
 1. **Add REST Adapter**
    - Click on "+" in the integration canvas
@@ -43,8 +122,10 @@ If you want to trigger the integration via REST API:
      - **Request Format**: JSON
      - **Response Format**: JSON
 
-2. **Define Request Payload**
-   Click "Request" tab and provide sample JSON:
+2. **Define Request Payload Schema**
+
+   Click "Request" tab and provide this **simplified** JSON schema:
+
    ```json
    {
      "share_name": "delta_sharing",
@@ -53,6 +134,65 @@ If you want to trigger the integration via REST API:
      "oracle_table_name": "boston_housing",
      "batch_size": 100,
      "limit_rows": 200
+   }
+   ```
+
+   **What Each Parameter Does:**
+
+   | Parameter | Required? | Default | Description |
+   |-----------|-----------|---------|-------------|
+   | `share_name` | ✅ Yes | - | Delta Share name from profile.json |
+   | `schema_name` | ✅ Yes | - | Schema name in Delta Share |
+   | `table_name` | ✅ Yes | - | Table name in Delta Share |
+   | `oracle_table_name` | ❌ No | Same as `table_name` | Target table name in ATP |
+   | `batch_size` | ❌ No | `100` | Rows per batch for insertion |
+   | `limit_rows` | ❌ No | `null` (all) | Limit total rows (for testing) |
+
+   **What You DON'T Need to Pass:**
+   - ❌ `delta_profile_base64` - Embedded in Docker image
+   - ❌ `oracle_user` - Function config variable
+   - ❌ `oracle_password` - Function config variable
+   - ❌ `oracle_dsn` - Function config variable
+   - ❌ `oracle_wallet_location` - Embedded in Docker image
+   - ❌ `oracle_wallet_password` - Not needed
+
+3. **Example REST API Call from External System:**
+
+   **Minimal Request (only required fields):**
+   ```bash
+   curl -X POST https://your-oic-instance/ic/api/integration/v1/flows/rest/DBRX_TO_ATP_MIGRATION/1.0/ \
+     -H "Content-Type: application/json" \
+     -H "Authorization: Basic <base64-credentials>" \
+     -d '{
+       "share_name": "delta_sharing",
+       "schema_name": "default",
+       "table_name": "boston-housing"
+     }'
+   ```
+
+   **Full Request (with optional parameters):**
+   ```bash
+   curl -X POST https://your-oic-instance/ic/api/integration/v1/flows/rest/DBRX_TO_ATP_MIGRATION/1.0/ \
+     -H "Content-Type: application/json" \
+     -H "Authorization: Basic <base64-credentials>" \
+     -d '{
+       "share_name": "delta_sharing",
+       "schema_name": "default",
+       "table_name": "boston-housing",
+       "oracle_table_name": "boston_housing_copy",
+       "batch_size": 200,
+       "limit_rows": 1000
+     }'
+   ```
+
+   **Expected Response:**
+   ```json
+   {
+     "status": "success",
+     "rows_migrated": 506,
+     "total_rows_in_oracle": 506,
+     "source": "delta_sharing.default.boston-housing",
+     "destination": "ADMIN.boston_housing"
    }
    ```
 
@@ -70,21 +210,48 @@ If you want to trigger the integration via REST API:
    - **Function**: Select `dbrx-to-atp-migration`
 
 3. **Configure Request**
-   Click "Request" tab and provide the function input schema:
+
+   The function accepts parameters in JSON format. Here's what you need to configure:
+
+   **Required Parameters (You MUST provide):**
    ```json
    {
-     "delta_profile_base64": "",
+     "share_name": "delta_sharing",
+     "schema_name": "default",
+     "table_name": "boston-housing"
+   }
+   ```
+
+   **Optional Parameters (Override defaults):**
+   ```json
+   {
+     "oracle_table_name": "boston_housing",  // Default: same as table_name
+     "batch_size": 100,                       // Default: 100
+     "limit_rows": 200                        // Default: null (all rows)
+   }
+   ```
+
+   **Auto-Handled by Function (Don't pass these):**
+   ```json
+   {
+     "delta_profile_base64": "...",          // ✅ Auto-loaded from /function/delta_share_profile.json
+     "oracle_user": "...",                   // ✅ Auto-loaded from environment variable
+     "oracle_password": "...",               // ✅ Auto-loaded from environment variable
+     "oracle_dsn": "...",                    // ✅ Auto-loaded from environment variable
+     "oracle_wallet_location": "/function/wallet",  // ✅ Hardcoded in function
+     "oracle_wallet_password": null          // ✅ Not needed (extracted from wallet)
+   }
+   ```
+
+   **Complete Request Schema for OIC:**
+   ```json
+   {
      "share_name": "",
      "schema_name": "",
      "table_name": "",
-     "oracle_user": "",
-     "oracle_password": "",
-     "oracle_dsn": "",
-     "oracle_wallet_location": "",
-     "oracle_wallet_password": null,
+     "oracle_table_name": "",
      "batch_size": 100,
-     "limit_rows": null,
-     "oracle_table_name": ""
+     "limit_rows": null
    }
    ```
 
@@ -103,42 +270,54 @@ If you want to trigger the integration via REST API:
 ### Step 4: Map Request Data
 
 1. **Click on Mapper** (before OCI Function action)
-2. **Map Fields**:
+
+2. **Map ONLY These Fields from REST Trigger:**
    ```
    Left (Source - from trigger) → Right (Target - to function)
 
-   share_name → share_name
-   schema_name → schema_name
-   table_name → table_name
-   oracle_table_name → oracle_table_name
-   batch_size → batch_size
-   limit_rows → limit_rows
+   share_name → share_name                   (REQUIRED)
+   schema_name → schema_name                 (REQUIRED)
+   table_name → table_name                   (REQUIRED)
+   oracle_table_name → oracle_table_name     (OPTIONAL - defaults to table_name)
+   batch_size → batch_size                   (OPTIONAL - defaults to 100)
+   limit_rows → limit_rows                   (OPTIONAL - defaults to null)
    ```
 
-3. **Configure Credentials** (use one of these methods):
-
-   **Option A: Hardcoded (Development Only)**
+3. **DO NOT Map These Fields** (automatically handled by function):
    ```
-   delta_profile_base64 ← "base64-encoded-profile-content"
-   oracle_user ← "ADMIN"
-   oracle_password ← "YourPassword"
-   oracle_dsn ← "yourdb_high"
-   oracle_wallet_location ← "/tmp/wallet"
-   ```
-
-   **Option B: Using OIC Configuration** (Recommended)
-   - Create integration properties for sensitive values
-   - Map them in the mapper:
-   ```
-   delta_profile_base64 ← $deltaProfileBase64Config
-   oracle_user ← $oracleUserConfig
-   oracle_password ← $oraclePasswordConfig
-   oracle_dsn ← $oracleDsnConfig
+   ❌ delta_profile_base64     - Auto-loaded from Docker image
+   ❌ oracle_user              - Auto-loaded from OCI Function configuration
+   ❌ oracle_password          - Auto-loaded from OCI Function configuration
+   ❌ oracle_dsn               - Auto-loaded from OCI Function configuration
+   ❌ oracle_wallet_location   - Hardcoded as /function/wallet
+   ❌ oracle_wallet_password   - Not needed
    ```
 
-   **Option C: Using Lookups** (Best for Production)
-   - Create lookup tables for configuration
-   - Use lookup() function to retrieve values
+   **Why?** These are pre-configured when the function was deployed via GitHub Actions:
+   - Delta Share profile is baked into the Docker image
+   - Oracle credentials are set as OCI Function configuration variables
+   - Oracle wallet is embedded in the Docker image
+
+4. **Example Mapper Configuration:**
+
+   **Minimal (only required fields):**
+   ```
+   Mapping Expression:
+   share_name ← "delta_sharing"
+   schema_name ← "default"
+   table_name ← "boston-housing"
+   ```
+
+   **Full (with optional parameters):**
+   ```
+   Mapping Expression:
+   share_name ← $RestTrigger.request.share_name
+   schema_name ← $RestTrigger.request.schema_name
+   table_name ← $RestTrigger.request.table_name
+   oracle_table_name ← $RestTrigger.request.oracle_table_name
+   batch_size ← $RestTrigger.request.batch_size
+   limit_rows ← $RestTrigger.request.limit_rows
+   ```
 
 ### Step 5: Map Response Data
 
@@ -237,7 +416,7 @@ If you want to trigger the integration via REST API:
 
 ## Example Integration Patterns
 
-### Pattern 1: Scheduled Migration
+### Pattern 1: Scheduled Migration (Recommended)
 
 Use OIC's Schedule adapter to run migrations periodically:
 
@@ -245,6 +424,21 @@ Use OIC's Schedule adapter to run migrations periodically:
 [Schedule Adapter] → [OCI Function] → [Notification]
   (every day 2 AM)
 ```
+
+**Setup Steps:**
+1. Create new integration with Schedule as trigger
+2. Configure schedule:
+   - **Frequency**: Daily, Hourly, Weekly, etc.
+   - **Time**: Specific time (e.g., 2:00 AM)
+   - **Timezone**: Your preferred timezone
+3. Add OCI Function invocation
+4. Add email notification for results
+5. Activate
+
+**Use Cases:**
+- Daily data refresh from Databricks to ATP
+- Hourly incremental updates
+- Weekly full data sync
 
 ### Pattern 2: File-Triggered Migration
 
@@ -255,6 +449,11 @@ Trigger migration when a config file is uploaded to object storage:
   (watch folder)
 ```
 
+**Use Cases:**
+- Upload CSV with list of tables to migrate
+- Configuration-driven migrations
+- Batch processing workflows
+
 ### Pattern 3: REST API with Validation
 
 Expose REST API with input validation:
@@ -263,6 +462,11 @@ Expose REST API with input validation:
 [REST Trigger] → [Validate Input] → [OCI Function] → [Log to Database] → [REST Response]
 ```
 
+**Use Cases:**
+- On-demand migration triggered by external systems
+- Integration with CI/CD pipelines
+- Manual testing and debugging
+
 ### Pattern 4: Multi-Table Migration
 
 Loop through multiple tables:
@@ -270,6 +474,11 @@ Loop through multiple tables:
 ```
 [REST Trigger] → [For-Each Table] → [OCI Function] → [Aggregate Results] → [Response]
 ```
+
+**Use Cases:**
+- Migrate entire schema at once
+- Bulk data operations
+- Coordinated multi-table updates
 
 ## Complete Integration Example
 
@@ -366,6 +575,67 @@ Here's a complete integration flow:
 4. **Connection Pooling**: Reuse Oracle connections when possible
 5. **Async Invocation**: For large migrations, use async patterns
 
+## Quick Start: Create a Scheduled Integration
+
+The fastest way to get started with automated data migration:
+
+### 1. Create Scheduled Integration
+
+```bash
+# In OIC Console:
+# 1. Integrations → Create → Schedule
+# 2. Name: "Daily_DBRX_ATP_Sync"
+# 3. Schedule: Daily at 2:00 AM
+```
+
+### 2. Add Function Invocation
+
+```bash
+# Drag "Oracle Cloud Infrastructure" adapter
+# Configure:
+#   - Region: us-phoenix-1
+#   - Compartment: <your-compartment>
+#   - Application: dbrx-to-atp-app
+#   - Function: dbrx-to-atp-migration
+```
+
+### 3. Set Function Parameters
+
+Use the mapper to set these values:
+
+| Parameter | Value (Example) |
+|-----------|----------------|
+| `share_name` | `"delta_sharing"` |
+| `schema_name` | `"default"` |
+| `table_name` | `"boston-housing"` |
+| `oracle_table_name` | `"boston_housing"` |
+| `batch_size` | `100` |
+| `limit_rows` | `null` (all rows) |
+| `delta_profile_base64` | From configuration |
+| `oracle_user` | From configuration |
+| `oracle_password` | From configuration |
+| `oracle_dsn` | From configuration |
+
+### 4. Add Email Notification
+
+```bash
+# After function success:
+# - Drag "Notification" adapter
+# - Configure email with results
+# - Subject: "DBRX to ATP Migration Completed"
+# - Body: Include rows_migrated, status, etc.
+```
+
+### 5. Activate and Test
+
+```bash
+# Click "Activate"
+# Enable tracing and payload logging
+# Use "Submit Now" to test immediately
+```
+
+That's it! Your data will now sync automatically every day at 2 AM.
+
 ## Next Steps
 
 - Set up monitoring and alerts
@@ -373,6 +643,7 @@ Here's a complete integration flow:
 - Implement retry logic for failed migrations
 - Create dashboard for migration metrics
 - Automate testing with OIC Test Framework
+- Explore multi-table batch migrations
 
 ## Resources
 
