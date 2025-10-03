@@ -18,31 +18,16 @@ def handler(ctx, data: io.BytesIO = None):
     """
     OCI Function handler to migrate data from Databricks Delta Share to Oracle ATP
 
-    Simplified Input (only 3 required parameters for OIC integration):
+    Expected input JSON:
     {
-        "share_name": "delta_sharing",        (REQUIRED)
-        "schema_name": "default",             (REQUIRED)
-        "table_name": "boston-housing",       (REQUIRED)
-        "oracle_table_name": "boston_housing", (optional, defaults to table_name)
-        "batch_size": 100,                    (optional, default 100)
-        "limit_rows": null                    (optional, null = all rows)
-    }
-
-    Auto-loaded from environment/embedded files:
-    - Oracle credentials: ORACLE_USER, ORACLE_PASSWORD, ORACLE_DSN (from function config)
-    - Delta Share profile: /function/delta_share_profile.json (embedded in Docker image)
-    - Oracle wallet: /function/wallet/ (embedded in Docker image)
-
-    Full Input (legacy, all parameters explicit):
-    {
-        "delta_profile_base64": "base64...",  (optional if embedded profile exists)
+        "delta_profile_base64": "base64 encoded delta share profile content",
         "share_name": "share_name",
         "schema_name": "schema_name",
         "table_name": "table_name",
-        "oracle_user": "ADMIN",               (optional if ORACLE_USER env var set)
-        "oracle_password": "password",        (optional if ORACLE_PASSWORD env var set)
-        "oracle_dsn": "connection_string",    (optional if ORACLE_DSN env var set)
-        "oracle_wallet_location": "/function/wallet",
+        "oracle_user": "ADMIN",
+        "oracle_password": "password",
+        "oracle_dsn": "connection_string",
+        "oracle_wallet_location": "/tmp/wallet",
         "oracle_wallet_password": null,
         "batch_size": 100,
         "limit_rows": null
@@ -56,48 +41,23 @@ def handler(ctx, data: io.BytesIO = None):
         body = json.loads(data.getvalue()) if data.getvalue() else {}
         logger.info(f"Received request with keys: {body.keys()}")
 
-        # Extract parameters with defaults from environment variables
+        # Extract parameters
+        delta_profile_b64 = body.get("delta_profile_base64")
         share_name = body.get("share_name")
         schema_name = body.get("schema_name")
         table_name = body.get("table_name")
+        oracle_user = body.get("oracle_user")
+        oracle_password = body.get("oracle_password")
+        oracle_dsn = body.get("oracle_dsn")
+        oracle_wallet_location = body.get("oracle_wallet_location")
+        oracle_wallet_password = body.get("oracle_wallet_password")
         batch_size = body.get("batch_size", 100)
         limit_rows = body.get("limit_rows")
         oracle_table_name = body.get("oracle_table_name", table_name)
 
-        # Oracle credentials - from request OR environment variables
-        oracle_user = body.get("oracle_user") or os.getenv("ORACLE_USER")
-        oracle_password = body.get("oracle_password") or os.getenv("ORACLE_PASSWORD")
-        oracle_dsn = body.get("oracle_dsn") or os.getenv("ORACLE_DSN")
-        oracle_wallet_location = body.get("oracle_wallet_location") or os.getenv("ORACLE_WALLET_LOCATION", "/function/wallet")
-        oracle_wallet_password = body.get("oracle_wallet_password") or os.getenv("ORACLE_WALLET_PASSWORD")
-
-        # Delta profile - from request OR embedded file
-        delta_profile_b64 = body.get("delta_profile_base64")
-        profile_path = "/tmp/delta.share"
-
-        if delta_profile_b64:
-            # Use provided profile
-            import base64
-            profile_content = base64.b64decode(delta_profile_b64).decode('utf-8')
-            with open(profile_path, 'w') as f:
-                f.write(profile_content)
-            logger.info("Using Delta Share profile from request")
-        elif os.path.exists("/function/delta_share_profile.json"):
-            # Use embedded profile from Docker image
-            profile_path = "/function/delta_share_profile.json"
-            logger.info("Using embedded Delta Share profile from Docker image")
-        else:
-            return response.Response(
-                ctx,
-                response_data=json.dumps({
-                    "error": "No Delta Share profile provided. Either pass 'delta_profile_base64' or embed profile in Docker image at /function/delta_share_profile.json"
-                }),
-                headers={"Content-Type": "application/json"},
-                status_code=400
-            )
-
-        # Validate required parameters (only data source parameters are required now)
+        # Validate required parameters
         required_params = {
+            "delta_profile_base64": delta_profile_b64,
             "share_name": share_name,
             "schema_name": schema_name,
             "table_name": table_name,
@@ -110,13 +70,17 @@ def handler(ctx, data: io.BytesIO = None):
         if missing:
             return response.Response(
                 ctx,
-                response_data=json.dumps({
-                    "error": f"Missing required parameters: {missing}",
-                    "hint": "Oracle credentials can be set as function configuration variables (ORACLE_USER, ORACLE_PASSWORD, ORACLE_DSN)"
-                }),
+                response_data=json.dumps({"error": f"Missing required parameters: {missing}"}),
                 headers={"Content-Type": "application/json"},
                 status_code=400
             )
+
+        # Decode and save delta profile
+        import base64
+        profile_content = base64.b64decode(delta_profile_b64).decode('utf-8')
+        profile_path = "/tmp/delta.share"
+        with open(profile_path, 'w') as f:
+            f.write(profile_content)
 
         logger.info(f"Loading data from Delta Share: {share_name}.{schema_name}.{table_name}")
 
