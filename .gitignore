@@ -2,7 +2,7 @@
 .env
 
 # Delta Sharing profile
-*.share
+# *.share
 
 # Python
 __pycache__/
