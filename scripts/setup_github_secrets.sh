@@ -76,7 +76,7 @@ fi
 
 # 2. OCIR_USERNAME
 echo "2️⃣  Creating OCIR_USERNAME..."
-OCIR_USERNAME="hpctraininglab/oracleidentitycloudservice/suresh.veeragoni@oracle.com"
+OCIR_USERNAME="hpctraininglab/SCE/suresh.veeragoni@oracle.com"
 echo "$OCIR_USERNAME" | gh secret set OCIR_USERNAME
 echo "   ✓ OCIR_USERNAME created"
 
