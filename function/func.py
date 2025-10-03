@@ -18,16 +18,31 @@ def handler(ctx, data: io.BytesIO = None):
     """
     OCI Function handler to migrate data from Databricks Delta Share to Oracle ATP
 
-    Expected input JSON:
+    Simplified Input (only 3 required parameters for OIC integration):
     {
-        "delta_profile_base64": "base64 encoded delta share profile content",
+        "share_name": "delta_sharing",        (REQUIRED)
+        "schema_name": "default",             (REQUIRED)
+        "table_name": "boston-housing",       (REQUIRED)
+        "oracle_table_name": "boston_housing", (optional, defaults to table_name)
+        "batch_size": 100,                    (optional, default 100)
+        "limit_rows": null                    (optional, null = all rows)
+    }
+
+    Auto-loaded from environment/embedded files:
+    - Oracle credentials: ORACLE_USER, ORACLE_PASSWORD, ORACLE_DSN (from function config)
+    - Delta Share profile: /function/delta_share_profile.json (embedded in Docker image)
+    - Oracle wallet: /function/wallet/ (embedded in Docker image)
+
+    Full Input (legacy, all parameters explicit):
+    {
+        "delta_profile_base64": "base64...",  (optional if embedded profile exists)
         "share_name": "share_name",
         "schema_name": "schema_name",
         "table_name": "table_name",
-        "oracle_user": "ADMIN",
-        "oracle_password": "password",
-        "oracle_dsn": "connection_string",
-        "oracle_wallet_location": "/tmp/wallet",
+        "oracle_user": "ADMIN",               (optional if ORACLE_USER env var set)
+        "oracle_password": "password",        (optional if ORACLE_PASSWORD env var set)
+        "oracle_dsn": "connection_string",    (optional if ORACLE_DSN env var set)
+        "oracle_wallet_location": "/function/wallet",
         "oracle_wallet_password": null,
         "batch_size": 100,
         "limit_rows": null
