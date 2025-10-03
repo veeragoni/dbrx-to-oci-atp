@@ -1,5 +1,5 @@
 fdk>=0.1.66
-delta-sharing>=1.0.0
+delta-sharing<1.0.0
 pandas>=2.0.0
 oracledb>=1.3.0
 pyarrow>=12.0.0
