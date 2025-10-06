@@ -1,0 +1,14 @@
+{
+  "language": "typescript",
+  "app": "npx ts-node main.ts",
+  "projectId": "dbrx-to-atp-infrastructure",
+  "sendCrashReports": "false",
+  "terraformProviders": [
+    "hashicorp/oci@~> 6.18.0"
+  ],
+  "terraformModules": [],
+  "context": {
+    "excludeStackIdFromLogicalIds": "true",
+    "allowSepCharsInLogicalIds": "true"
+  }
+}

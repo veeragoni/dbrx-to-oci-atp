@@ -1,0 +1,61 @@
+name: Build and Push Function to OCIR
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'function/**'
+  workflow_dispatch:
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest  # Native x86_64 - no emulation needed!
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Restore Oracle Wallet from Secret
+      working-directory: ./function
+      run: |
+        # Decode base64-encoded wallet zip from GitHub Secret
+        echo "${{ secrets.ORACLE_WALLET_BASE64 }}" | base64 -d > wallet.zip
+        unzip -q wallet.zip -d Wallet_NDG3D3LXZ4ESODQC
+        rm wallet.zip
+
+    - name: Log in to OCIR
+      run: |
+        echo "${{ secrets.OCIR_TOKEN }}" | docker login iad.ocir.io \
+          -u "${{ secrets.OCIR_USERNAME }}" \
+          --password-stdin
+
+    - name: Build Docker image
+      working-directory: ./function
+      run: |
+        docker build -t iad.ocir.io/hpctraininglab/atp-repo:latest \
+                     -t iad.ocir.io/hpctraininglab/atp-repo:${{ github.sha }} \
+                     .
+
+    - name: Push Docker image
+      run: |
+        docker push iad.ocir.io/hpctraininglab/atp-repo:latest
+        docker push iad.ocir.io/hpctraininglab/atp-repo:${{ github.sha }}
+
+    - name: Update OCI Function
+      env:
+        OCI_CLI_USER: ${{ secrets.OCI_USER_OCID }}
+        OCI_CLI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+        OCI_CLI_TENANCY: ${{ secrets.OCI_TENANCY_OCID }}
+        OCI_CLI_REGION: us-ashburn-1
+        OCI_CLI_KEY_CONTENT: ${{ secrets.OCI_PRIVATE_KEY }}
+      run: |
+        # Install OCI CLI
+        curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh -o install.sh
+        bash install.sh --accept-all-defaults
+
+        # Update function with new image AND Oracle credentials as config variables
+        ~/bin/oci fn function update \
+          --function-id ocid1.fnfunc.oc1.iad.amaaaaaa52tswuaanqz25ylbc5cv5j6u3l2l6rdyrtzpoij77j3rgu7bk6sq \
+          --image iad.ocir.io/hpctraininglab/atp-repo:latest \
+          --config '{"ORACLE_USER":"${{ secrets.ORACLE_USER }}","ORACLE_PASSWORD":"${{ secrets.ORACLE_PASSWORD }}","ORACLE_DSN":"${{ secrets.ORACLE_DSN }}"}' \
+          --force

@@ -1,0 +1,67 @@
+# Environment variables - CONTAINS SECRETS
+.env
+.env.*
+!config/.env.example
+
+# Delta Sharing profile - CONTAINS BEARER TOKENS
+*.share
+!config/config.share.example
+
+# OCI Configuration - CONTAINS PRIVATE KEYS
+.oci/
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Oracle Wallet - CONTAINS DATABASE CREDENTIALS
+Wallet_*/
+function/Wallet_*/
+*.sso
+*.p12
+*.jks
+tnsnames.ora
+sqlnet.ora
+ewallet.p12
+cwallet.sso
+
+# CDKTF Generated Files
+infrastructure/cdktf.out/
+infrastructure/.terraform/
+infrastructure/terraform.tfstate*
+infrastructure/.gen/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,36 @@
+{
+  "name": "dbrx-to-atp-infrastructure",
+  "version": "1.0.0",
+  "description": "CDKTF infrastructure for DBRX to ATP migration function",
+  "main": "main.ts",
+  "scripts": {
+    "get": "cdktf get",
+    "build": "tsc",
+    "synth": "cdktf synth",
+    "deploy": "cdktf deploy",
+    "destroy": "cdktf destroy",
+    "compile": "tsc --pretty",
+    "watch": "tsc -w",
+    "test": "echo \"No tests yet\"",
+    "upgrade": "npm i cdktf@latest cdktf-cli@latest",
+    "upgrade:next": "npm i cdktf@next cdktf-cli@next"
+  },
+  "engines": {
+    "node": ">=20.9"
+  },
+  "dependencies": {
+    "cdktf": "^0.21.0",
+    "cdktf-provider-oci": "^1.1.2",
+    "constructs": "^10.4.2",
+    "dotenv": "^17.2.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.5.2",
+    "cdktf-cli": "^0.21.0",
+    "dotenv-cli": "^10.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.2"
+  },
+  "author": "",
+  "license": "MIT"
+}
